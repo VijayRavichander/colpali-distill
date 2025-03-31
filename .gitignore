@@ -1,0 +1,8 @@
+__pycache__
+.venv/
+colpali/
+kaggle.ipynb
+colsmol256_config.yml
+.DS_Store
+**/.DS_Store
+.env

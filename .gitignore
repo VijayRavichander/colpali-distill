@@ -6,3 +6,4 @@ colsmol256_config.yml
 .DS_Store
 **/.DS_Store
 .env
+train.ipynb

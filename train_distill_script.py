@@ -8,12 +8,29 @@ from train_distill_colpali import ColModelDistillTraining, ColModelDistillTraini
 from transformers import TrainingArguments
 import wandb
 import os
+from dotenv import load_dotenv
+import datetime
+
+
 
 # def main(config_file: Path) -> None:
 def main() -> None:
-    os.environ["WANDB_API_KEY"] = ""
+    
+    # Load environment variables from .env file
+    load_dotenv()
+
+    # Access the tokens
+    hf_token = os.getenv("HF_TOKEN")
+    wandb_token = os.getenv("WANDB_TOKEN")
+
+    os.environ["HF_TOKEN"] = hf_token
+    os.environ["WANDB_API_KEY"] = wandb_token
+
     print("Loading config")
+
     wandb.init(project="colpali-distill")
+
+    is_distill_training = False
 
     peft_config = LoraConfig(
         r=32,
@@ -33,30 +50,61 @@ def main() -> None:
         gradient_accumulation_steps = 4,
         per_device_train_batch_size= 2,
         per_device_eval_batch_size= 2,
-        weight_decay=0.01,
-        fp16=True, 
+        weight_decay = 0.01,
+        fp16 = True, 
         optim = "adamw_torch", 
         logging_steps= 2,
         logging_strategy="steps", 
         eval_strategy = "epoch",
         eval_on_start = True, 
-        hub_token = "", 
-        push_to_hub=True, 
-        hub_model_id="vijay-ravichander/ColSmolVLM-Instruct-256M-Distill-500M",
-        save_steps=1,
-        save_strategy="epoch",
+        # hub_token = "", 
+        # push_to_hub=True, 
+        # hub_model_id="vijay-ravichander/ColSmolVLM-Instruct-256M-Distill-500M",
+        # save_steps=1,
+        # save_strategy="epoch",
         report_to=["wandb"] 
     )
 
-    config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm", 
-                           processor=ColIdefics3Processor.from_pretrained("vidore/ColSmolVLM-Instruct-256M-base"), 
-                           model=ColIdefics3.from_pretrained("vidore/ColSmolVLM-Instruct-256M-base", torch_dtype=torch.float16, attn_implementation="eager"),
-                           teacher_model= ColIdefics3.from_pretrained( "vidore/colSmol-500M", torch_dtype=torch.float16, attn_implementation="eager").eval(),
-                           teacher_processor = ColIdefics3Processor.from_pretrained("vidore/colSmol-500M"),
-                           peft_config = peft_config, 
-                           tr_args=training_args, 
-                           train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/"
+    if is_distill_training:
+
+        teacher_model = "vidore/colSmol-500M"
+        student_model = "vidore/ColSmolVLM-Instruct-256M-base"
+
+        config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm", 
+                            processor=ColIdefics3Processor.from_pretrained(student_model), 
+                            model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
+                            teacher_model= ColIdefics3.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
+                            teacher_processor = ColIdefics3Processor.from_pretrained(teacher_model),
+                            hub_repo_id = f"vijay-ravichander/",
+                            peft_config = peft_config, 
+                            tr_args=training_args, 
+                            train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/"
+                            )
+        wandb.log({
+            "using_teacher_model": "Yes", 
+            "teacher_model": teacher_model, 
+            "student_model": student_model
+        })
+
+    else:
+        student_model = "vidore/ColSmolVLM-Instruct-256M-base"
+
+        config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm", 
+                            processor=ColIdefics3Processor.from_pretrained(student_model), 
+                            model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
+                            hub_repo_id = f"vijay-ravichander/",
+                            peft_config = peft_config, 
+                            tr_args = training_args, 
+                            train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/"
                         )
+        
+        wandb.log({
+            "using_teacher_model": "No", 
+            "teacher_model": "", 
+            "student_model": student_model
+        })
+        
+
     print("Creating Setup")
 
     if isinstance(config, ColModelDistillTrainingConfig):
@@ -67,6 +115,8 @@ def main() -> None:
     # if config.run_train:
     print("Training model")
     app.train()
+
+    app.save()
 
     # app.save(config_file=config_file)
     print("Done!")

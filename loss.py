@@ -40,7 +40,7 @@ class ColBertPairwiseDistillLoss(torch.nn.Module):
         else:
             assert batch_size == batch_size_c, "Shape mismatch"
 
-        scores = torch.einsum("bnd,csd->bcns", query_embeddings, doc_embeddings).max(dim=3)[0].sum(dim=-1)
+        scores = torch.einsum("bnd,csd->bcns", query_embeddings, doc_embeddings).max(dim=3)[0].sum(dim=2)
         pos_scores = torch.diag(scores)
 
         mask = torch.eye(scores.shape[0], device=scores.device).bool()
@@ -51,7 +51,7 @@ class ColBertPairwiseDistillLoss(torch.nn.Module):
 
         if not eval:
             # MSE loss 
-            teacher_scores = torch.einsum("bnd,csd->bcns", teacher_query_outputs, teacher_doc_outputs).max(dim=3)[0].sum(dim=-1)
+            teacher_scores = torch.einsum("bnd,csd->bcns", teacher_query_outputs, teacher_doc_outputs).max(dim=3)[0].sum(dim=2)
 
             mse_loss = self.mse_loss(scores.to(torch.float16), teacher_scores.to(torch.float16))
 

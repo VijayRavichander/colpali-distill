@@ -6,21 +6,21 @@ class ContrastiveTrainer(Trainer):
         super().__init__(*args, **kwargs)
         self.loss_func = loss_func
         self.is_vision_model = is_vision_model # Unused argument, will be removed in 0.4.0
-        self.teacher_model =  teacher_model.to('cuda') 
+        self.teacher_model = teacher_model.to('cuda') 
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         query_outputs = model(input_ids=inputs["query_input_ids"], attention_mask=inputs["query_attention_mask"])
         # feed only kwargs with 'doc_' prefix
         doc_outputs = model(**{k[4:]: v for k, v in inputs.items() if k.startswith("doc")})
 
-
-        with torch.no_grad():
-            teacher_query_outputs = self.teacher_model(
-                                                        input_ids=inputs["teacher_query_input_ids"],
-                                                        attention_mask=inputs["teacher_query_attention_mask"]
-                                                        )
-            
-            teacher_doc_outputs = self.teacher_model(**{k[12:]: v for k, v in inputs.items() if k.startswith("teacher_doc")})
+        if self.teacher_model:
+            with torch.no_grad():
+                teacher_query_outputs = self.teacher_model(
+                                                            input_ids=inputs["teacher_query_input_ids"],
+                                                            attention_mask=inputs["teacher_query_attention_mask"]
+                                                            )
+                
+                teacher_doc_outputs = self.teacher_model(**{k[12:]: v for k, v in inputs.items() if k.startswith("teacher_doc")})
 
 
         if "neg_doc_input_ids" in inputs:
@@ -28,7 +28,13 @@ class ContrastiveTrainer(Trainer):
             loss = self.loss_func(query_outputs, doc_outputs, teacher_query_outputs, teacher_doc_outputs)
             return (loss, (query_outputs, doc_outputs, neg_doc_outputs)) if return_outputs else loss
 
-        loss = self.loss_func(query_outputs, doc_outputs, teacher_query_outputs, teacher_doc_outputs, eval = False)
+        if self.teacher_model:
+            loss = self.loss_func(query_outputs, doc_outputs, teacher_query_outputs, teacher_doc_outputs, eval = False)
+
+        else:
+            # For Eval and No Distill
+            loss = self.loss_func(query_outputs, doc_outputs, eval = True)
+
         return (loss, (query_outputs, doc_outputs)) if return_outputs else loss
 
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=True):

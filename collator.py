@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union, cast
+from typing import Any, Dict, List, Union, cast, Optional
 
 from PIL.Image import Image
 import torch
@@ -22,7 +22,7 @@ class VisualRetrieverCollator:
     def __init__(
         self,
         processor: BaseVisualRetrieverProcessor,
-        teacher_processor: BaseVisualRetrieverProcessor,
+        teacher_processor: Optional[BaseVisualRetrieverProcessor] = None,
         max_length: int = 2048,
     ):  
         self.teacher_processor = teacher_processor
@@ -67,7 +67,8 @@ class VisualRetrieverCollator:
         batch_doc = self.processor.process_images(images=images)
         batch_neg_doc = self.processor.process_images(images=neg_images) if neg_images else None
         
-        batch_teacher_doc = self.teacher_processor.process_images(images = images)
+        if self.teacher_processor:
+            batch_teacher_doc = self.teacher_processor.process_images(images = images)
 
         # Process queries.
         if all(q is None for q in texts_query):
@@ -79,10 +80,12 @@ class VisualRetrieverCollator:
                 queries=cast(List[str], texts_query),
                 max_length=self.max_length,
             )
-            batch_teacher_query = self.teacher_processor.process_queries(
-                queries=cast(List[str], texts_query),
-                max_length=self.max_length,
-            )
+
+            if self.teacher_processor:
+                batch_teacher_query = self.teacher_processor.process_queries(
+                    queries=cast(List[str], texts_query),
+                    max_length=self.max_length,
+                )
 
         # Prefix keys to avoid collisions.
         batch_all = prefix_keys(batch_doc, "doc_")

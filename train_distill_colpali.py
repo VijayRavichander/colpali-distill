@@ -9,10 +9,6 @@ from transformers import (
     TrainingArguments,
 )
 
-from colpali_engine.collators import CorpusQueryCollator
-from colpali_engine.loss.late_interaction_losses import (
-    ColbertLoss,
-)
 
 from colpali_engine.utils.gpu_stats import print_gpu_utilization, print_summary
 from colpali_engine.utils.processing_utils import BaseVisualRetrieverProcessor
@@ -20,7 +16,6 @@ from datasets import  load_dataset
 
 from loss import ColBertPairwiseDistillLoss
 from contrastive_trainer import ContrastiveTrainer
-
 from collator import VisualRetrieverCollator
 
 
@@ -28,8 +23,9 @@ from collator import VisualRetrieverCollator
 class ColModelDistillTrainingConfig:
     model: Union[PreTrainedModel, PeftModel]
     processor: BaseVisualRetrieverProcessor
-    teacher_model: Union[PreTrainedModel, PeftModel]
-    teacher_processor: BaseVisualRetrieverProcessor
+    hub_repo_id: str
+    teacher_model: Optional[Union[PreTrainedModel, PeftModel]] = None
+    teacher_processor: Optional[BaseVisualRetrieverProcessor] = None
     tr_args: Optional[TrainingArguments] = None
     output_dir: Optional[str] = None
     max_length: int = 256
@@ -126,16 +122,19 @@ class ColModelDistillTraining:
     def eval(self) -> None:
         raise NotImplementedError("Evaluation is not implemented yet.")
 
-    def save(self, config_file: str):
+    def save(self):
         """
         Save the model with its training config, as well as the tokenizer and processor if provided.
         """
-        self.model.save_pretrained(self.config.output_dir)
-        self.config.processor.save_pretrained(self.config.output_dir)
+        # self.model.save_pretrained(self.config.output_dir)
+        # self.config.processor.save_pretrained(self.config.output_dir)
+        self.model = self.model.merge_and_unload()
+        self.model.push_to_hub(self.config.hub_repo_id)
+        self.config.processor.push_to_hub(self.config.hub_repo_id)
 
         # Copy-paste the training config
-        os.system(f"cp {config_file} {self.config.output_dir}/training_config.yml")
+        # os.system(f"cp {config_file} {self.config.output_dir}/training_config.yml")
 
         # Save git hash of the commit at beginning of training
-        with open(f"{self.config.output_dir}/git_hash.txt", "w") as f:
-            f.write(self.current_git_hash)
+        # with open(f"{self.config.output_dir}/git_hash.txt", "w") as f:
+        #     f.write(self.current_git_hash)

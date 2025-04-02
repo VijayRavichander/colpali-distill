@@ -7,3 +7,4 @@ colsmol256_config.yml
 **/.DS_Store
 .env
 train.ipynb
+vidore-benchmark.json

@@ -52,7 +52,7 @@ def main() -> None:
         per_device_eval_batch_size= 2,
         weight_decay = 0.01,
         fp16 = True, 
-        optim = "adamw_torch", 
+        optim = "paged_adamw_8bit", 
         logging_steps= 2,
         logging_strategy="steps", 
         eval_strategy = "epoch",

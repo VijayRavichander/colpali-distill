@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss, MSELoss
 
 class ColBertPairwiseDistillLoss(torch.nn.Module):
-    def __init__(self, alpha=0.5):
+    def __init__(self, alpha=0.3):
         super().__init__()
         self.ce_loss = CrossEntropyLoss()
         self.mse_loss = MSELoss()

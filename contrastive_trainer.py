@@ -6,8 +6,11 @@ class ContrastiveTrainer(Trainer):
         super().__init__(*args, **kwargs)
         self.loss_func = loss_func
         self.is_vision_model = is_vision_model # Unused argument, will be removed in 0.4.0
-        self.teacher_model = teacher_model.to('cuda') 
-
+        
+        if teacher_model:
+            self.teacher_model = teacher_model.to('cuda') 
+        else:
+            self.teacher_model = teacher_model
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         query_outputs = model(input_ids=inputs["query_input_ids"], attention_mask=inputs["query_attention_mask"])
         # feed only kwargs with 'doc_' prefix

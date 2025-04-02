@@ -30,7 +30,7 @@ def main() -> None:
 
     wandb.init(project="colpali-distill")
 
-    is_distill_training = False
+    IS_DISTILL_TRAINING = True
 
     peft_config = LoraConfig(
         r=32,
@@ -57,6 +57,7 @@ def main() -> None:
         logging_strategy="steps", 
         eval_strategy = "epoch",
         eval_on_start = True, 
+        max_grad_norm = 1, 
         # hub_token = "", 
         # push_to_hub=True, 
         # hub_model_id="vijay-ravichander/ColSmolVLM-Instruct-256M-Distill-500M",
@@ -65,7 +66,7 @@ def main() -> None:
         report_to=["wandb"] 
     )
 
-    if is_distill_training:
+    if IS_DISTILL_TRAINING:
 
         teacher_model = "vidore/colSmol-500M"
         student_model = "vidore/ColSmolVLM-Instruct-256M-base"
@@ -75,7 +76,7 @@ def main() -> None:
                             model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
                             teacher_model= ColIdefics3.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
                             teacher_processor = ColIdefics3Processor.from_pretrained(teacher_model),
-                            hub_repo_id = f"vijay-ravichander/",
+                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Dis-500M-tues",
                             peft_config = peft_config, 
                             tr_args=training_args, 
                             train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/"
@@ -103,7 +104,7 @@ def main() -> None:
             "teacher_model": "", 
             "student_model": student_model
         })
-        
+
 
     print("Creating Setup")
 

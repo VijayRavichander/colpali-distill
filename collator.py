@@ -48,6 +48,9 @@ class VisualRetrieverCollator:
         texts_query: List[Union[str, None]] = []
         images: List[Image] = []
         neg_images: List[Image] = []
+        
+        batch_teacher_doc = None
+        batch_teacher_query = None
 
         # Parse the examples.
         for example in examples:

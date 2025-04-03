@@ -10,7 +10,7 @@ import wandb
 import os
 from dotenv import load_dotenv
 import datetime
-
+from loss import ColBertPairwiseDistillKLLoss
 
 
 # def main(config_file: Path) -> None:
@@ -70,7 +70,7 @@ def main() -> None:
 
         teacher_model = "vidore/colSmol-500M"
         student_model = "vidore/ColSmolVLM-Instruct-256M-base"
-
+        loss = ColBertPairwiseDistillKLLoss(temperature=2)
         config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm", 
                             processor=ColIdefics3Processor.from_pretrained(student_model), 
                             model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
@@ -79,12 +79,15 @@ def main() -> None:
                             hub_repo_id = f"vijay-ravichander/ColSmol-256-Dis-500M-tues",
                             peft_config = peft_config, 
                             tr_args=training_args, 
-                            train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/"
+                            train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/",
+                            loss_func=loss
                             )
         wandb.log({
             "using_teacher_model": "Yes", 
             "teacher_model": teacher_model, 
-            "student_model": student_model
+            "student_model": student_model,
+            "training_samples": 800, 
+            "eval_samples": 150
         })
 
     else:
@@ -102,7 +105,9 @@ def main() -> None:
         wandb.log({
             "using_teacher_model": "No", 
             "teacher_model": "", 
-            "student_model": student_model
+            "student_model": student_model,
+            "training_samples": 800, 
+            "eval_samples": 150
         })
 
 

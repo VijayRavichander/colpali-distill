@@ -111,9 +111,9 @@ class ColBertPairwiseDistillKLLoss(nn.Module): # Renamed for clarity
         mask = torch.eye(scores.shape[0], device=scores.device, dtype=torch.bool)
         neg_scores_masked = scores.masked_fill(mask, float('-inf')) # Mask out positive pairs
         # Option 1: Max negative score per query
-        # neg_scores = neg_scores_masked.max(dim=1)[0]
+        neg_scores = neg_scores_masked.max(dim=1)[0]
         # Option 2: LogSumExp over negative scores per query (often more stable)
-        neg_scores = torch.logsumexp(neg_scores_masked, dim=1)
+        # neg_scores = torch.logsumexp(neg_scores_masked, dim=1)
 
         # Using Softplus for the margin loss: log(1 + exp(neg - pos))
         # Equivalent to CrossEntropyLoss if neg_scores were logits for the negative class

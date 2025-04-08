@@ -18,7 +18,6 @@ from loss import ColBertPairwiseDistillLoss
 from contrastive_trainer import ContrastiveTrainer
 from collator import VisualRetrieverCollator
 
-
 @dataclass
 class ColModelDistillTrainingConfig:
     model: Union[PreTrainedModel, PeftModel]
@@ -36,6 +35,8 @@ class ColModelDistillTrainingConfig:
     train_dataset: Optional[str] = 'vidore/arxivqa_test_subsampled'
     eval_dataset_loader: Optional[Dict[str, Callable]] = None
     pretrained_peft_model_name_or_path: Optional[str] = None
+    train_size: int = 400
+    eval_size: int = 100
     """
     Config class used for training a ColVision model.
     """
@@ -105,8 +106,8 @@ class ColModelDistillTraining:
 
         trainer = ContrastiveTrainer(
             model=self.model,
-            train_dataset=self.dataset["train"].take(450),
-            eval_dataset=self.dataset["test"].take(50),
+            train_dataset=self.dataset["train"].take(self.config.train_size),
+            eval_dataset=self.dataset["test"].take(self.config.eval_size),
             args=self.config.tr_args,
             data_collator=self.collator,
             loss_func=self.config.loss_func,

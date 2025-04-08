@@ -11,6 +11,7 @@ import os
 from dotenv import load_dotenv
 import datetime
 from loss import ColBertPairwiseDistillKLLoss
+from colpali_engine.models import ColQwen2, ColQwen2Processor
 
 
 # def main(config_file: Path) -> None:
@@ -45,49 +46,49 @@ def main() -> None:
 
     training_args = TrainingArguments(
         output_dir = None,
-        num_train_epochs = 2,
-        # max_steps = 10,
-        gradient_accumulation_steps = 4,
+        num_train_epochs = 4,
+        gradient_accumulation_steps = 1,
         per_device_train_batch_size= 2,
         per_device_eval_batch_size= 2,
         weight_decay = 0.01,
         fp16 = True, 
+        learning_rate = 2e-6,
         optim = "paged_adamw_8bit", 
         logging_steps= 2,
         logging_strategy="steps", 
         eval_strategy = "epoch",
         eval_on_start = True, 
         max_grad_norm = 1, 
-        # hub_token = "", 
-        # push_to_hub=True, 
-        # hub_model_id="vijay-ravichander/ColSmolVLM-Instruct-256M-Distill-500M",
-        # save_steps=1,
-        # save_strategy="epoch",
-        report_to=["wandb"] 
+        report_to=["wandb"], 
     )
 
     if IS_DISTILL_TRAINING:
 
-        teacher_model = "vidore/colSmol-500M"
+        teacher_model = "vidore/colqwen2-v0.1"
         student_model = "vidore/ColSmolVLM-Instruct-256M-base"
-        loss = ColBertPairwiseDistillKLLoss(temperature=2)
+        train_samples_size = 200
+        eval_samples_size = 50
+        training_args.run_name = "test-run-for-200-train_size"
+        
         config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm", 
                             processor=ColIdefics3Processor.from_pretrained(student_model), 
                             model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
-                            teacher_model= ColIdefics3.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
-                            teacher_processor = ColIdefics3Processor.from_pretrained(teacher_model),
-                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Dis-500M-tues",
+                            teacher_model= ColQwen2.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
+                            teacher_processor = ColQwen2Processor.from_pretrained(teacher_model),
+                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Distill-Qwen-tues",
                             peft_config = peft_config, 
                             tr_args=training_args, 
                             train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/",
-                            loss_func=loss
+                            train_size=train_samples_size,
+                            eval_size=eval_samples_size
                             )
         wandb.log({
             "using_teacher_model": "Yes", 
             "teacher_model": teacher_model, 
             "student_model": student_model,
-            "training_samples": 800, 
-            "eval_samples": 150
+            "training_samples": train_samples_size, 
+            "eval_samples": eval_samples_size,
+            "global_batch_size": training_args.gradient_accumulation_steps * training_args.per_device_train_batch_size
         })
 
     else:
@@ -99,15 +100,18 @@ def main() -> None:
                             hub_repo_id = f"vijay-ravichander/",
                             peft_config = peft_config, 
                             tr_args = training_args, 
-                            train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/"
+                            train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/",
+                            train_size=train_samples_size,
+                            eval_size=eval_samples_size
                         )
         
         wandb.log({
             "using_teacher_model": "No", 
             "teacher_model": "", 
             "student_model": student_model,
-            "training_samples": 800, 
-            "eval_samples": 150
+            "training_samples": train_samples_size, 
+            "eval_samples": eval_samples_size,
+            "global_batch_size": training_args.gradient_accumulation_steps * training_args.per_device_train_batch_size
         })
 
 

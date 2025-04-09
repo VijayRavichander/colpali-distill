@@ -31,10 +31,7 @@ class ColBertPairwiseDistillLoss(torch.nn.Module):
             batch_size_tc, num_context_tokens_t, emb_dim_tc = teacher_doc_outputs.shape
 
             assert (
-                batch_size == batch_size_c == batch_size_t == batch_size_tc and
-                emb_dim == emb_dim_c == emb_dim_t == emb_dim_tc and
-                num_query_tokens == num_query_tokens_t and
-                num_context_tokens == num_context_tokens_t
+                batch_size == batch_size_c == batch_size_t == batch_size_tc
             ), "Shape mismatch"
 
         else:

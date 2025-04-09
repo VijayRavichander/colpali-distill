@@ -54,9 +54,10 @@ def main() -> None:
         fp16 = False, 
         learning_rate = 1e-4,
         optim = "adamw_torch", 
-        logging_steps= 2,
+        logging_steps= 1,
         logging_strategy="steps", 
-        eval_strategy = "epoch",
+        eval_strategy = "steps",
+        eval_steps = 10,
         eval_on_start = True, 
         max_grad_norm = 1, 
         report_to=["wandb"], 
@@ -66,16 +67,16 @@ def main() -> None:
 
         teacher_model = "vidore/colqwen2-v0.1"
         student_model = "vidore/ColSmolVLM-Instruct-256M-base"
-        train_samples_size = 200
-        eval_samples_size = 50
-        training_args.run_name = "test-run-for-200-train_size"
+        train_samples_size = 1300
+        eval_samples_size = 150
+        training_args.run_name = "500M Distill using batch size of 32 and 1300 samples"
         
         config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm", 
                             processor=ColIdefics3Processor.from_pretrained(student_model), 
                             model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
                             teacher_model= ColQwen2.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
                             teacher_processor = ColQwen2Processor.from_pretrained(teacher_model),
-                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Distill-Qwen-tues",
+                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Distill-500-wed-big-run",
                             peft_config = peft_config, 
                             tr_args=training_args, 
                             train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/",

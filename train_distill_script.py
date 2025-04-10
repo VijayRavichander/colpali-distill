@@ -49,7 +49,7 @@ def main() -> None:
         num_train_epochs = 1,
         gradient_accumulation_steps = 8,
         per_device_train_batch_size= 4,
-        per_device_eval_batch_size= 2,
+        per_device_eval_batch_size= 4,
         weight_decay = 0.01,
         fp16 = False, 
         learning_rate = 1e-4,
@@ -57,7 +57,7 @@ def main() -> None:
         logging_steps= 1,
         logging_strategy="steps", 
         eval_strategy = "steps",
-        eval_steps = 10,
+        eval_steps = 5,
         eval_on_start = True, 
         max_grad_norm = 1, 
         report_to=["wandb"], 
@@ -65,17 +65,17 @@ def main() -> None:
 
     if IS_DISTILL_TRAINING:
 
-        teacher_model = "vidore/colqwen2-v0.1"
+        teacher_model = "vidore/colSmol-500M"
         student_model = "vidore/ColSmolVLM-Instruct-256M-base"
-        train_samples_size = 1300
+        train_samples_size = 1200
         eval_samples_size = 150
-        training_args.run_name = "500M Distill using batch size of 32 and 1300 samples"
+        training_args.run_name = "500M Distill using batch size of 32 and 1200 samples"
         
         config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm", 
                             processor=ColIdefics3Processor.from_pretrained(student_model), 
                             model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
-                            teacher_model= ColQwen2.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
-                            teacher_processor = ColQwen2Processor.from_pretrained(teacher_model),
+                            teacher_model= ColIdefics3.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
+                            teacher_processor = ColIdefics3Processor.from_pretrained(teacher_model),
                             hub_repo_id = f"vijay-ravichander/ColSmol-256-Distill-500-wed-big-run",
                             peft_config = peft_config, 
                             tr_args=training_args, 
@@ -94,11 +94,14 @@ def main() -> None:
 
     else:
         student_model = "vidore/ColSmolVLM-Instruct-256M-base"
+        train_samples_size = 1200
+        eval_samples_size = 150
+        training_args.run_name = "500M using batch size of 32 and 1200 samples"
 
         config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm", 
                             processor=ColIdefics3Processor.from_pretrained(student_model), 
                             model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
-                            hub_repo_id = f"vijay-ravichander/",
+                            hub_repo_id = f"vijay-ravichander/colsmol-non-distill",
                             peft_config = peft_config, 
                             tr_args = training_args, 
                             train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/",

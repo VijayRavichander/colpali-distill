@@ -23,7 +23,7 @@ class VisualRetrieverCollator:
         self,
         processor: BaseVisualRetrieverProcessor,
         teacher_processor: Optional[BaseVisualRetrieverProcessor] = None,
-        max_length: int = 2048,
+        max_length: int = 60,
     ):  
         self.teacher_processor = teacher_processor
         self.processor = processor
@@ -84,11 +84,22 @@ class VisualRetrieverCollator:
                 max_length=self.max_length,
             )
 
+            for key in batch_query:
+                tensor = batch_query[key]
+                if isinstance(tensor, torch.Tensor) and tensor.dim() == 2:
+                    batch_query[key] = tensor[:, :self.max_length]
+
             if self.teacher_processor:
                 batch_teacher_query = self.teacher_processor.process_queries(
                     queries=cast(List[str], texts_query),
                     max_length=self.max_length,
                 )
+
+                for key in batch_teacher_query:
+                    tensor = batch_teacher_query[key]
+                    if isinstance(tensor, torch.Tensor) and tensor.dim() == 2:
+                        batch_teacher_query[key] = tensor[:, :self.max_length]
+    
 
         # Prefix keys to avoid collisions.
         batch_all = prefix_keys(batch_doc, "doc_")

@@ -88,9 +88,14 @@ class ColModelDistillTraining:
         self.model = self.config.model
         self.teacher_model = self.config.teacher_model
 
-        data_files = {"train": [self.config.train_dataset + "train-00005-of-00082.parquet", 
+        data_files = {"train": [self.config.train_dataset + "train-00001-of-00082.parquet", 
+                                self.config.train_dataset + "train-00002-of-00082.parquet",
+                                self.config.train_dataset + "train-00003-of-00082.parquet", 
+                                self.config.train_dataset + "train-00004-of-00082.parquet", 
+                                self.config.train_dataset + "train-00005-of-00082.parquet", 
                                 self.config.train_dataset + "train-00006-of-00082.parquet"
                                 ], 
+                                
         "test": self.config.train_dataset + "test-00000-of-00001.parquet"}
         self.dataset = load_dataset("parquet", data_files=data_files)
 

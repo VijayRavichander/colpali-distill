@@ -59,7 +59,7 @@ def main() -> None:
         eval_strategy = "steps",
         eval_steps = 5,
         eval_on_start = True, 
-        max_grad_norm = 1, 
+        max_grad_norm = 0.8, 
         report_to=["wandb"], 
     )
 
@@ -67,7 +67,7 @@ def main() -> None:
 
         teacher_model = "vidore/colSmol-500M"
         student_model = "vidore/ColSmolVLM-Instruct-256M-base"
-        train_samples_size = 1200
+        train_samples_size = 8000
         eval_samples_size = 150
         training_args.run_name = "500M Distill using batch size of 32 and 1200 samples"
         
@@ -76,7 +76,7 @@ def main() -> None:
                             model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
                             teacher_model= ColIdefics3.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
                             teacher_processor = ColIdefics3Processor.from_pretrained(teacher_model),
-                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Distill-500-wed-big-run",
+                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Distill-500-marshall-big-run",
                             peft_config = peft_config, 
                             tr_args=training_args, 
                             train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/",

@@ -57,7 +57,11 @@ if __name__ == "__main__":
 
     load_dotenv()
 
+    # Access the tokens
+    hf_token = os.getenv("HF_TOKEN")
     wandb_token = os.getenv("WANDB_TOKEN")
+
+    os.environ["HF_TOKEN"] = hf_token
     os.environ["WANDB_API_KEY"] = wandb_token
 
 

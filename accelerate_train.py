@@ -22,7 +22,7 @@ class TrainingConfig:
     student_model: str = "vidore/ColSmolVLM-Instruct-256M-base"
     teacher_model: Optional[str] = None
     train_dataset: str = "https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/"
-    processor: Optional[BaseVisualRetrieverProcessor]
+    processor: Optional[BaseVisualRetrieverProcessor] = None
     teacher_processor: Optional[BaseVisualRetrieverProcessor] = None,
     loss_fn: Optional[Callable] = ColBertPairwiseDistillLoss()
     seed: int = 42
@@ -35,13 +35,16 @@ class TrainingConfig:
     peft_config: Optional[LoraConfig] = None
     max_grad_norm: float = 1.0
     weight_decay: float = 0.01
-    train_samples: int = 8000
+    train_samples: int = 80
     test_samples: int = 150
     train_batch_size: int = 4
     gradient_accumulation_steps: int = 1
     eval_batch_size: int = 4
     resume_from_checkpoint: Optional[str] = None
     logging_steps: int = 1
+    checkpoint_interval: int = 10
+    log_wandb: bool = True
+    eval_steps: int = 5
 
 def prepare_dataset(config):
     data_files = {  "train": [config.train_dataset + "train-00001-of-00082.parquet", 
@@ -105,7 +108,6 @@ if __name__ == "__main__":
         model.print_trainable_parameters()
     
     params_to_train = filter(lambda p: p.requires_grad, model.parameters())
-
     optimizer = torch.optim.AdamW(params_to_train, lr = config.learning_rate, weight_decay = config.weight_decay)
 
     scheduler = get_linear_schedule_with_warmup(optimizer=optimizer, 
@@ -113,7 +115,7 @@ if __name__ == "__main__":
                                                 num_training_steps = config.epochs * len(train_dataloader) * accelerator.num_processes
                                                 )
     
-    model, optimizer, trainloader, testloader, scheduler = accelerator.prepare(
+    model, optimizer, train_loader, eval_dataloader, scheduler = accelerator.prepare(
                 model, optimizer, train_dataloader, eval_dataloader, scheduler
             )
 
@@ -142,6 +144,8 @@ if __name__ == "__main__":
 
     progress_bar = tqdm(range(completed_steps, num_training_steps), disable = not accelerator.is_local_main_process)
 
+    accelerator.print("Training")
+
     while train:
 
         train_loss = []
@@ -154,27 +158,40 @@ if __name__ == "__main__":
         model.train()
         for inputs in train_dataloader:
             
+            # accelerator.print("Forward")
+
             # forward using the query inputs
             query_outputs = model(input_ids=inputs["query_input_ids"].to(accelerator.device), attention_mask=inputs["query_attention_mask"].to(accelerator.device))
+
+            # accelerator.print("Forward Query")
 
             # feed only kwargs with 'doc_' prefix
             doc_outputs = model(**{k[4:]: v.to(device = accelerator.device) for k, v in inputs.items() if k.startswith("doc")})
 
+            # accelerator.print("Forward Doc")
+
             loss = loss_fn(query_outputs, doc_outputs, eval = True) / config.gradient_accumulation_steps
+
             accumulated_loss += loss 
+
+            # accelerator.print(f"Loss: {accumulated_loss}")
 
             ### Compute Gradients ###
             accelerator.backward(loss)
+
+            # accelerator.print("Backward")
 
             accumulated_steps += 1
 
             if accumulated_steps % config.gradient_accumulation_steps == 0:
                 ### Clip Gradients ###
-                accelerator.clip_grad_norm_(params_to_train, config.max_grad_norm)
+                accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
             
                 ### Update Model ###
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
+
+                # accelerator.print("Update Params")
 
                 ### Update Learning Rate ###
                 scheduler.step()
@@ -191,17 +208,25 @@ if __name__ == "__main__":
                             "learning_rate": scheduler.get_last_lr()[0]
                         }
 
-                    logging_string = f"[{completed_steps}/{config.num_training_steps}] Training Loss: {accumulated_loss}"
+                    logging_string = f"[{completed_steps}/{num_training_steps}] Training Loss: {accumulated_loss}"
 
-                    if accelerator.is_main_process:
+                    accelerator.print(logging_string)
+
+                    if accelerator.is_local_main_process:
                         progress_bar.write(logging_string)
                     
                     if config.log_wandb:
                         accelerator.log(log, step = completed_steps)
 
                 if completed_steps % config.eval_steps == 0:
-
+                    accelerator.print("Eval Time!!!!")
+                    
                     model.eval()
+
+                    log = {
+                        "eval_loss": 0
+                    }
+
                     num_losses = 0
 
                     for inputs in tqdm(eval_dataloader, disable = not accelerator.is_main_process):
@@ -223,7 +248,7 @@ if __name__ == "__main__":
 
                     log["eval_loss"] = log["eval_loss"] / num_losses
 
-                    logging_string = f"[{completed_steps}/{config.num_training_steps}] Eval Loss: {accumulated_loss}"
+                    logging_string = f"[{completed_steps}/{num_training_steps}] Eval Loss: {accumulated_loss}"
 
                     if accelerator.is_main_process:
                         progress_bar.write(logging_string)
@@ -234,8 +259,10 @@ if __name__ == "__main__":
                     model.train()
 
                 if completed_steps % config.checkpoint_interval == 0:
+                    
+                    # accelerator.print("Checkpointing")
 
-                    path_to_checkpoint = os.path.join(config.path_to_experiment, f"checkpoint_{completed_steps}")
+                    path_to_checkpoint = os.path.join(config.working_directory, f"checkpoint_{completed_steps}")
 
                     if accelerator.is_main_process:
                         progress_bar.write(f"Saving Checkpoint to {path_to_checkpoint}")
@@ -257,7 +284,7 @@ if __name__ == "__main__":
                 completed_steps += 1
                 progress_bar.update(1)
 
-                accumulate_loss = 0
+                accumulated_loss = 0
 
 accelerator.end_training()
 

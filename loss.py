@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 from torch.nn import CrossEntropyLoss, MSELoss
 
 class ColBertPairwiseDistillLoss(torch.nn.Module):
@@ -45,7 +46,6 @@ class ColBertPairwiseDistillLoss(torch.nn.Module):
         neg_scores = s_masked.max(dim=1)[0]
         contrastive_loss = F.softplus(neg_scores - pos_scores).mean()
 
-
         if not eval:
             # MSE loss 
             teacher_scores = torch.einsum("bnd,csd->bcns", teacher_query_outputs, teacher_doc_outputs).max(dim=3)[0].sum(dim=2)
@@ -59,10 +59,6 @@ class ColBertPairwiseDistillLoss(torch.nn.Module):
             loss = contrastive_loss
 
         return loss
-
-import torch
-import torch.nn as nn # Use nn instead of importing specific losses
-import torch.nn.functional as F
 
 class ColBertPairwiseDistillKLLoss(nn.Module): # Renamed for clarity
     """
@@ -161,19 +157,3 @@ class ColBertPairwiseDistillKLLoss(nn.Module): # Renamed for clarity
             loss = contrastive_loss
 
         return loss
-
-# Example Usage (requires dummy data)
-# batch_size = 4
-# num_q_tokens = 10
-# num_d_tokens = 100
-# emb_dim = 128
-
-# student_q = torch.randn(batch_size, num_q_tokens, emb_dim, requires_grad=True)
-# student_d = torch.randn(batch_size, num_d_tokens, emb_dim, requires_grad=True)
-# teacher_q = torch.randn(batch_size, num_q_tokens, emb_dim)
-# teacher_d = torch.randn(batch_size, num_d_tokens, emb_dim)
-
-# loss_fn = ColBertPairwiseDistillKLLoss(alpha=0.5, temperature=2.0)
-# loss_value = loss_fn(student_q, student_d, teacher_q, teacher_d)
-# print(f"Calculated Loss: {loss_value.item()}")
-# # loss_value.backward() # To compute gradients

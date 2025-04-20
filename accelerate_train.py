@@ -4,7 +4,7 @@ from tqdm import tqdm
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from dataclasses import dataclass, asdict
-from typing import Optional
+from typing import Optional, Callable
 import numpy as np
 import os
 from dotenv import load_dotenv
@@ -20,17 +20,28 @@ import wandb
 @dataclass
 class TrainingConfig:
     student_model: str = "vidore/ColSmolVLM-Instruct-256M-base"
+    teacher_model: Optional[str] = None
     train_dataset: str = "https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/"
-    processor = None
+    processor: Optional[BaseVisualRetrieverProcessor]
     teacher_processor: Optional[BaseVisualRetrieverProcessor] = None,
-    max_length: int = 60
+    loss_fn: Optional[Callable] = ColBertPairwiseDistillLoss()
     seed: int = 42
+    working_directory: str = "./training_artifacts"
+
+    #TRAINING ARGUEMENTS:
+    max_length: int = 60
     learning_rate: float = 1e-5
     epochs: int = 1
-    peft_config = None
+    peft_config: Optional[LoraConfig] = None
     max_grad_norm: float = 1.0
     weight_decay: float = 0.01
-
+    train_samples: int = 8000
+    test_samples: int = 150
+    train_batch_size: int = 4
+    gradient_accumulation_steps: int = 1
+    eval_batch_size: int = 4
+    resume_from_checkpoint: Optional[str] = None
+    logging_steps: int = 1
 
 def prepare_dataset(config):
     data_files = {  "train": [config.train_dataset + "train-00001-of-00082.parquet", 
@@ -48,36 +59,21 @@ def prepare_dataset(config):
     return dataset
 
 
-
 if __name__ == "__main__":
+
 
     config = TrainingConfig()
 
     set_seed(config.seed)
 
-    load_dotenv()
-
-    # Access the tokens
-    hf_token = os.getenv("HF_TOKEN")
-    wandb_token = os.getenv("WANDB_TOKEN")
-
-    os.environ["HF_TOKEN"] = hf_token
-    os.environ["WANDB_API_KEY"] = wandb_token
-
-
-    accelerator = Accelerator(project_dir="./",
+    accelerator = Accelerator(project_dir = config.working_directory,
                           log_with="wandb")
     
-
-
     if accelerator.is_local_main_process:
         wandb.init(project="nano-distributed-training")
 
     dataset = prepare_dataset(config)
-    
-    student_model = "vidore/ColSmolVLM-Instruct-256M-base" #ARGPARSE
 
-    config.student_model = student_model
     config.processor = ColIdefics3Processor.from_pretrained(config.student_model)
     
     config.peft_config = LoraConfig(
@@ -94,15 +90,15 @@ if __name__ == "__main__":
 
     collator = VisualRetrieverCollator(config.processor)
 
-    train_dataloader = DataLoader(dataset["train"], batch_size = 2, collate_fn = collator)
-    eval_dataloader = DataLoader(dataset["test"], batch_size = 2, collate_fn = collator)
+    train_dataloader = DataLoader(dataset["train"].take(config.train_samples), batch_size = config.train_batch_size, collate_fn = collator)
+    eval_dataloader = DataLoader(dataset["test"].take(config.test_samples), batch_size = config.eval_batch_size, collate_fn = collator)
 
-    model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager")
+    model = ColIdefics3.from_pretrained(config.student_model, torch_dtype=torch.float16, attn_implementation="eager")
     loss_fn = ColBertPairwiseDistillLoss()
 
 
     if config.peft_config is not None:
-        print("Configurating PEFT model")
+        accelerator.print("Configurating PEFT model")
         # Prepare the model for k-bit training
         model = prepare_model_for_kbit_training(model)
         model = get_peft_model(model, config.peft_config)
@@ -110,95 +106,158 @@ if __name__ == "__main__":
     
     params_to_train = filter(lambda p: p.requires_grad, model.parameters())
 
-
-    optimizer = torch.optim.AdamW(params_to_train, lr = config.learning_rate, weight_decay= config.weight_decay)
+    optimizer = torch.optim.AdamW(params_to_train, lr = config.learning_rate, weight_decay = config.weight_decay)
 
     scheduler = get_linear_schedule_with_warmup(optimizer=optimizer, 
-                                            num_warmup_steps = 0 , 
-                                            num_training_steps = config.epochs * len(train_dataloader) * accelerator.num_processes)
+                                                num_warmup_steps = 0, 
+                                                num_training_steps = config.epochs * len(train_dataloader) * accelerator.num_processes
+                                                )
     
     model, optimizer, trainloader, testloader, scheduler = accelerator.prepare(
                 model, optimizer, train_dataloader, eval_dataloader, scheduler
-    )
+            )
 
-    for epoch in range(config.epochs):
+    accelerator.register_for_checkpointing(scheduler)
 
-        accelerator.print(f"Training Epoch {epoch}")
+
+    if config.resume_from_checkpoint is not None:
+
+        path_to_checkpoint = os.path.join(config.working_directory, config.resume_from_checkpoint)
+
+        with accelerator.main_process_first():
+            accelerator.load_state(path_to_checkpoint)
+        
+        completed_steps = int(path_to_checkpoint.split("_")[-1])
+        accelerator.print(f"Resuming Training from Checkpoint: {config.resume_from_checkpoint}")
+        
+    else:
+        completed_steps = 0
+
+    train = True
+
+    # Total Number of Training Steps
+    num_samples = config.train_samples
+    steps_per_epoch = num_samples // (config.train_batch_size * accelerator.num_processes * config.gradient_accumulation_steps)
+    num_training_steps = config.epochs * steps_per_epoch
+
+    progress_bar = tqdm(range(completed_steps, num_training_steps), disable = not accelerator.is_local_main_process)
+
+    while train:
 
         train_loss = []
         eval_loss = []
         
-        progress_bar = tqdm(range(len(trainloader)), disable=not accelerator.is_local_main_process)
+        accumulated_loss = 0
+        accumulated_steps = 0
+        
 
         model.train()
-
         for inputs in train_dataloader:
             
             # forward using the query inputs
             query_outputs = model(input_ids=inputs["query_input_ids"].to(accelerator.device), attention_mask=inputs["query_attention_mask"].to(accelerator.device))
 
             # feed only kwargs with 'doc_' prefix
-            doc_outputs = model(**{k[4:]: v.to(dtype=torch.float16, device = accelerator.device) for k, v in inputs.items() if k.startswith("doc")})
+            doc_outputs = model(**{k[4:]: v.to(device = accelerator.device) for k, v in inputs.items() if k.startswith("doc")})
 
-            loss = loss_fn(query_outputs, doc_outputs, eval = True)
-            
+            loss = loss_fn(query_outputs, doc_outputs, eval = True) / config.gradient_accumulation_steps
+            accumulated_loss += loss 
+
             ### Compute Gradients ###
             accelerator.backward(loss)
 
-            ### Clip Gradients ###
-            accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+            accumulated_steps += 1
+
+            if accumulated_steps % config.gradient_accumulation_steps == 0:
+                ### Clip Gradients ###
+                accelerator.clip_grad_norm_(params_to_train, config.max_grad_norm)
             
-            ### Update Model ###
-            optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
+                ### Update Model ###
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
 
-            ### Gather Metrics Across GPUs ###
-            loss_gathered = accelerator.gather_for_metrics(loss)
+                ### Update Learning Rate ###
+                scheduler.step()
 
-            ### Store Current Iteration Error ###
-            eval_loss.append(torch.mean(loss_gathered).item())
+                if completed_steps % config.logging_steps == 0:
+                    accumulated_loss = accumulated_loss.detach()
 
+                    if accelerator.num_processes > 1:
 
-        for inputs in eval_dataloader:
+                        accumulated_loss = torch.mean(accelerator.gather_for_metrics(accumulated_loss))
+                    
+                    log = {
+                            "train_loss": accumulated_loss,
+                            "learning_rate": scheduler.get_last_lr()[0]
+                        }
 
-            with torch.no_grad():
-                # forward using the query inputs
-                query_outputs = model(input_ids=inputs["query_input_ids"].to(accelerator.device), attention_mask=inputs["query_attention_mask"].to(accelerator.device))
+                    logging_string = f"[{completed_steps}/{config.num_training_steps}] Training Loss: {accumulated_loss}"
 
-                # feed only kwargs with 'doc_' prefix
-                doc_outputs = model(**{k[4:]: v.to(dtype=torch.float32, device = accelerator.device) for k, v in inputs.items() if k.startswith("doc")})
+                    if accelerator.is_main_process:
+                        progress_bar.write(logging_string)
+                    
+                    if config.log_wandb:
+                        accelerator.log(log, step = completed_steps)
 
-            loss = loss_fn(query_outputs, doc_outputs, eval = True)
+                if completed_steps % config.eval_steps == 0:
 
+                    model.eval()
+                    num_losses = 0
 
-            ### Gather Metrics Across GPUs ###
-            loss_gathered = accelerator.gather_for_metrics(loss)
+                    for inputs in tqdm(eval_dataloader, disable = not accelerator.is_main_process):
 
-            ### Store Current Iteration Error ###
-            train_loss.append(torch.mean(loss_gathered).item())
-            
-            ### Iterate Progress Bar ###
-            progress_bar.update(1)
+                        with torch.no_grad():
+                            # forward using the query inputs
+                            query_outputs = model(input_ids=inputs["query_input_ids"].to(accelerator.device), attention_mask=inputs["query_attention_mask"].to(accelerator.device))
 
-            ### Update Learning Rate ###
-            scheduler.step()
+                            # feed only kwargs with 'doc_' prefix
+                            doc_outputs = model(**{k[4:]: v.to(device = accelerator.device) for k, v in inputs.items() if k.startswith("doc")})
 
+                        loss = loss_fn(query_outputs, doc_outputs, eval = True).detach()
 
-        epoch_train_loss = np.mean(train_loss)
-        epoch_eval_loss = np.mean(eval_loss)
+                        if accelerator.num_processes > 1:
+                            loss = torch.mean(accelerator.gather_for_metrics(loss))
+                        
+                        log["eval_loss"] += loss
+                        num_losses += 1
 
-        accelerator.print(f"Train Loss:", epoch_train_loss)
-        accelerator.print(f"Eval Loss:", epoch_eval_loss)
-        
-        ### Log with Weights and Biases ###
-        accelerator.log({"training_loss": epoch_train_loss,
-                        "evaling_loss": epoch_eval_loss}, step=epoch)
-    
-    ### Save Final Model ###
-    accelerator.wait_for_everyone()
-    
-    # if config.peft_config:
-    #     accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "food_merged_checkpoint.safetensors"), merge_weights=True)
+                    log["eval_loss"] = log["eval_loss"] / num_losses
 
-    ### End Training for Trackers to Exit ###
-    accelerator.end_training()
+                    logging_string = f"[{completed_steps}/{config.num_training_steps}] Eval Loss: {accumulated_loss}"
+
+                    if accelerator.is_main_process:
+                        progress_bar.write(logging_string)
+                    
+                    if config.log_wandb:
+                        accelerator.log(log, step = completed_steps)
+
+                    model.train()
+
+                if completed_steps % config.checkpoint_interval == 0:
+
+                    path_to_checkpoint = os.path.join(config.path_to_experiment, f"checkpoint_{completed_steps}")
+
+                    if accelerator.is_main_process:
+                        progress_bar.write(f"Saving Checkpoint to {path_to_checkpoint}")
+                    
+                    accelerator.wait_for_everyone()
+
+                    if accelerator.is_main_process:
+                        accelerator.save_state(output_dir=path_to_checkpoint)
+
+                if completed_steps >= num_training_steps:
+                    train = False
+
+                    if accelerator.is_main_process:
+                        progress_bar.write("Completed Training")
+                    
+                    break
+
+                ### Iterate Progress Bar and Completed Steps ###
+                completed_steps += 1
+                progress_bar.update(1)
+
+                accumulate_loss = 0
+
+accelerator.end_training()
+

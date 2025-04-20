@@ -9,3 +9,4 @@ colsmol256_config.yml
 train.ipynb
 vidore-benchmark.json
 eval_loss.png
+training_artifacts/

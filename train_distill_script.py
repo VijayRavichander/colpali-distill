@@ -10,7 +10,7 @@ import wandb
 import os
 from dotenv import load_dotenv
 import datetime
-from loss import ColBertPairwiseDistillKLLoss
+from loss import ColBertPairwiseDistillKLLoss, ColBertMarginMSELoss
 from colpali_engine.models import ColQwen2, ColQwen2Processor
 
 
@@ -29,7 +29,7 @@ def main() -> None:
 
     print("Loading config")
 
-    wandb.init(project="colpali-distill-test")
+    wandb.init(project="colpali-distill")
 
     IS_DISTILL_TRAINING = True
 
@@ -72,14 +72,14 @@ def main() -> None:
         train_samples_size = 8000
         eval_samples_size = 150
         training_args.run_name = "500M Distill using batch size of 32 and 1200 samples"
-        loss_fn  = ColBertPairwiseDistillKLLoss() # Renamed for clarity
+        loss_fn  = ColBertMarginMSELoss() # Renamed for clarity
 
         config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm/checkpoints", 
                             processor=ColIdefics3Processor.from_pretrained(student_model), 
                             model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
                             teacher_model= ColIdefics3.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
                             teacher_processor = ColIdefics3Processor.from_pretrained(teacher_model),
-                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Distill-500-marshall-big-run",
+                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Distill-500-MarginMSE-big-run",
                             peft_config = peft_config, 
                             tr_args=training_args, 
                             train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/",

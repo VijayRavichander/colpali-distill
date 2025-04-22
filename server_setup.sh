@@ -27,3 +27,6 @@ echo "Setup complete! Python environment is ready."
 #     --dataset-name vidore/docvqa_test_subsampled \
 #     --dataset-format qa \
 #     --split test
+
+# sudo apt-get update
+# sudo apt-get install -y python3-dev build-essential

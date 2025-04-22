@@ -208,7 +208,7 @@ class ColBertMarginMSELoss(torch.nn.Module):
         student_margin  = pos_scores      - hard_neg_scores
         teacher_margin  = teacher_pos     - teacher_hard_neg
 
-        margin_mse = self.mse_loss(student_margin, teacher_margin)
+        margin_mse = self.mse_loss(student_margin.float(), teacher_margin.float())
 
         # -------- Combine ------------------------------------
         loss = contrastive_loss + self.alpha * margin_mse

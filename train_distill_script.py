@@ -47,27 +47,28 @@ def main() -> None:
     training_args = TrainingArguments(
         output_dir = None,
         num_train_epochs = 1,
-        gradient_accumulation_steps = 8,
-        per_device_train_batch_size= 4,
+        gradient_accumulation_steps = 4,
+        per_device_train_batch_size= 14,
         per_device_eval_batch_size= 4,
         weight_decay = 0.01,
-        fp16 = False, 
+        bf16 = True, 
         learning_rate = 1e-4,
-        optim = "adamw_torch", 
+        optim = "paged_adamw_8bit", 
         logging_steps= 1,
         logging_strategy="steps", 
         eval_strategy = "steps",
-        eval_steps = 5,
+        eval_steps = 10,
         eval_on_start = False, 
         max_grad_norm = 0.8, 
         report_to=["wandb"], 
         save_strategy="steps",       # Save checkpoint every X steps or epochs
-        save_steps=2
+        save_steps=25
     )
 
     if IS_DISTILL_TRAINING:
 
         teacher_model = "vidore/colSmol-500M"
+        # teacher_model = "vidore/colqwen2-v1.0-merged"
         student_model = "vidore/ColSmolVLM-Instruct-256M-base"
         train_samples_size = 8000
         eval_samples_size = 150
@@ -79,7 +80,7 @@ def main() -> None:
                             model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
                             teacher_model= ColIdefics3.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
                             teacher_processor = ColIdefics3Processor.from_pretrained(teacher_model),
-                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Distill-500-MarginMSE-big-run",
+                            hub_repo_id = f"vijay-ravichander/ColSmol-256-Distill-500-MarginMSE-8h100",
                             peft_config = peft_config, 
                             tr_args=training_args, 
                             train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/",

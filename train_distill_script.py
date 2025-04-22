@@ -29,9 +29,9 @@ def main() -> None:
 
     print("Loading config")
 
-    # wandb.init(project="colpali-distill")
+    wandb.init(project="colpali-distill-test")
 
-    IS_DISTILL_TRAINING = False
+    IS_DISTILL_TRAINING = True
 
     peft_config = LoraConfig(
         r=32,
@@ -47,7 +47,7 @@ def main() -> None:
     training_args = TrainingArguments(
         output_dir = None,
         num_train_epochs = 1,
-        gradient_accumulation_steps = 1,
+        gradient_accumulation_steps = 8,
         per_device_train_batch_size= 4,
         per_device_eval_batch_size= 4,
         weight_decay = 0.01,
@@ -58,9 +58,11 @@ def main() -> None:
         logging_strategy="steps", 
         eval_strategy = "steps",
         eval_steps = 5,
-        eval_on_start = True, 
+        eval_on_start = False, 
         max_grad_norm = 0.8, 
         report_to=["wandb"], 
+        save_strategy="steps",       # Save checkpoint every X steps or epochs
+        save_steps=2
     )
 
     if IS_DISTILL_TRAINING:
@@ -70,8 +72,9 @@ def main() -> None:
         train_samples_size = 8000
         eval_samples_size = 150
         training_args.run_name = "500M Distill using batch size of 32 and 1200 samples"
-        
-        config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm", 
+        loss_fn  = ColBertPairwiseDistillKLLoss() # Renamed for clarity
+
+        config = ColModelDistillTrainingConfig(output_dir="./models/colsmolvlm/checkpoints", 
                             processor=ColIdefics3Processor.from_pretrained(student_model), 
                             model = ColIdefics3.from_pretrained(student_model, torch_dtype=torch.float16, attn_implementation="eager"),
                             teacher_model= ColIdefics3.from_pretrained(teacher_model, torch_dtype=torch.float16, attn_implementation="eager").eval(),
@@ -81,16 +84,18 @@ def main() -> None:
                             tr_args=training_args, 
                             train_dataset="https://huggingface.co/datasets/vidore/colpali_train_set/resolve/main/data/",
                             train_size=train_samples_size,
-                            eval_size=eval_samples_size
+                            eval_size=eval_samples_size,
+                            loss_func = loss_fn
                             )
-        # wandb.log({
-        #     "using_teacher_model": "Yes", 
-        #     "teacher_model": teacher_model, 
-        #     "student_model": student_model,
-        #     "training_samples": train_samples_size, 
-        #     "eval_samples": eval_samples_size,
-        #     "global_batch_size": training_args.gradient_accumulation_steps * training_args.per_device_train_batch_size
-        # })
+        wandb.log({
+            "using_teacher_model": "Yes", 
+            "teacher_model": teacher_model, 
+            "student_model": student_model,
+            "training_samples": train_samples_size, 
+            "eval_samples": eval_samples_size,
+            "global_batch_size": training_args.gradient_accumulation_steps * training_args.per_device_train_batch_size,
+            "loss_fn": "KL Loss"
+        })
 
     else:
         student_model = "vidore/ColSmolVLM-Instruct-256M-base"
@@ -109,14 +114,14 @@ def main() -> None:
                             eval_size=eval_samples_size
                         )
         
-        # wandb.log({
-        #     "using_teacher_model": "No", 
-        #     "teacher_model": "", 
-        #     "student_model": student_model,
-        #     "training_samples": train_samples_size, 
-        #     "eval_samples": eval_samples_size,
-        #     "global_batch_size": training_args.gradient_accumulation_steps * training_args.per_device_train_batch_size
-        # })
+        wandb.log({
+            "using_teacher_model": "No", 
+            "teacher_model": "", 
+            "student_model": student_model,
+            "training_samples": train_samples_size, 
+            "eval_samples": eval_samples_size,
+            "global_batch_size": training_args.gradient_accumulation_steps * training_args.per_device_train_batch_size
+        })
 
 
     print("Creating Setup")

@@ -149,11 +149,67 @@ class ColBertPairwiseDistillKLLoss(nn.Module): # Renamed for clarity
             # Scale KL loss by T^2 - standard practice when using temperature in KL distillation
             # This accounts for the softening effect of T on the gradients
             kl_div_loss = kl_div_loss * (self.temperature ** 2)
+            
 
-            # Combine contrastive loss with KL divergence loss
             loss = contrastive_loss + self.alpha * kl_div_loss
 
         else: # If eval=True, only return the contrastive loss
             loss = contrastive_loss
 
+        return loss
+
+class ColBertMarginMSELoss(torch.nn.Module):
+    """
+    Late‑interaction contrastive loss + Margin‑MSE distillation.
+
+    • Contrastive part = softplus(pos - hard_neg)  (same as before)
+    • Distillation part = MSE( student_margin , teacher_margin )
+        where margin := pos_score - hard_neg_score
+    """
+    def __init__(self, alpha: float = 0.3):
+        super().__init__()
+        self.ce_loss  = CrossEntropyLoss()
+        self.mse_loss = MSELoss()
+        self.alpha    = alpha      # weight for Margin‑MSE term
+
+    def forward(
+        self,
+        query_embeddings: torch.Tensor,
+        doc_embeddings: torch.Tensor,
+        teacher_query_outputs: torch.Tensor | None = None,
+        teacher_doc_outputs:  torch.Tensor | None = None,
+        eval: bool = False,
+    ) -> torch.Tensor:
+
+        # ---------- Student late‑interaction scores ----------
+        # scores[b, c] = Σ_max_t  q_tok · d_tok
+        scores = torch.einsum("bnd,csd->bcns", query_embeddings, doc_embeddings).max(dim=3)[0].sum(dim=2)
+
+        pos_scores      = torch.diagonal(scores)                 # (B,)
+        neg_mask        = torch.eye(scores.size(0), device=scores.device).bool()
+        hard_neg_scores = scores.masked_fill(neg_mask, -1e4).max(dim=1)[0]  # (B,)
+
+        # -------- Contrastive loss (unchanged) ---------------
+        contrastive_loss = F.softplus(hard_neg_scores - pos_scores).mean()
+
+        if eval or teacher_query_outputs is None:
+            return contrastive_loss
+
+        # ---------- Teacher scores & margins -----------------
+        with torch.no_grad():
+            teacher_scores = torch.einsum(
+                "bnd,csd->bcns", teacher_query_outputs, teacher_doc_outputs
+            ).max(dim=3)[0].sum(dim=2)
+
+            teacher_pos      = torch.diagonal(teacher_scores)
+            teacher_hard_neg = teacher_scores.masked_fill(neg_mask, -1e4).max(dim=1)[0]
+
+        # margin := pos - hard_neg   (vector of size B)
+        student_margin  = pos_scores      - hard_neg_scores
+        teacher_margin  = teacher_pos     - teacher_hard_neg
+
+        margin_mse = self.mse_loss(student_margin, teacher_margin)
+
+        # -------- Combine ------------------------------------
+        loss = contrastive_loss + self.alpha * margin_mse
         return loss

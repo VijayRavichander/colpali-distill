@@ -47,13 +47,26 @@ class TrainingConfig:
     eval_steps: int = 5
 
 def prepare_dataset(config):
-    data_files = {  "train": [config.train_dataset + "train-00001-of-00082.parquet", 
-                            # config.train_dataset + "train-00002-of-00082.parquet",
-                            # config.train_dataset + "train-00003-of-00082.parquet", 
-                            # config.train_dataset + "train-00004-of-00082.parquet", 
-                            # config.train_dataset + "train-00005-of-00082.parquet", 
-                            # config.train_dataset + "train-00006-of-00082.parquet"
-                            ], 
+    data_files = {"train": [config.train_dataset + "train-00001-of-00082.parquet", 
+                                config.train_dataset + "train-00002-of-00082.parquet",
+                                config.train_dataset + "train-00003-of-00082.parquet", 
+                                config.train_dataset + "train-00004-of-00082.parquet", 
+                                config.train_dataset + "train-00005-of-00082.parquet", 
+                                config.train_dataset + "train-00006-of-00082.parquet", 
+                                config.train_dataset + "train-00007-of-00082.parquet",
+                                config.train_dataset + "train-00008-of-00082.parquet", 
+                                config.train_dataset + "train-00009-of-00082.parquet", 
+                                config.train_dataset + "train-00010-of-00082.parquet", 
+                                config.train_dataset + "train-00011-of-00082.parquet", 
+                                config.train_dataset + "train-00012-of-00082.parquet", 
+                                config.train_dataset + "train-00013-of-00082.parquet", 
+                                config.train_dataset + "train-00014-of-00082.parquet", 
+                                config.train_dataset + "train-00015-of-00082.parquet", 
+                                config.train_dataset + "train-00016-of-00082.parquet", 
+                                config.train_dataset + "train-00017-of-00082.parquet", 
+                                config.train_dataset + "train-00018-of-00082.parquet", 
+                                config.train_dataset + "train-00019-of-00082.parquet"
+                                ],
                     "test": config.train_dataset + "test-00000-of-00001.parquet"    
                 }
 
@@ -78,6 +91,14 @@ if __name__ == "__main__":
     dataset = prepare_dataset(config)
 
     config.processor = ColIdefics3Processor.from_pretrained(config.student_model)
+    
+    if config.get("teacher_processor", False):
+        # Teacher Processor
+        teacher_processor = ColIdefics3Processor.from_pretrained(config.student_model)
+
+        # Teacher Model
+        teacher_model = ColIdefics3.from_pretrained(config.teacher_model,  torch_dtype=torch.float16)
+
     
     config.peft_config = LoraConfig(
                                     r=32,
@@ -115,9 +136,15 @@ if __name__ == "__main__":
                                                 num_training_steps = config.epochs * len(train_dataloader) * accelerator.num_processes
                                                 )
     
-    model, optimizer, train_loader, eval_dataloader, scheduler = accelerator.prepare(
-                model, optimizer, train_dataloader, eval_dataloader, scheduler
-            )
+    if config.get("teacher_model", False):
+        model, teacher_model, optimizer, train_dataloader, eval_dataloader, scheduler = accelerator.prepare(
+                    model, teacher_model,  optimizer, train_dataloader, eval_dataloader, scheduler
+                )
+    else:
+
+        model, optimizer, train_dataloader, eval_dataloader, scheduler = accelerator.prepare(
+            model, optimizer, train_dataloader, eval_dataloader, scheduler
+        )
 
     accelerator.register_for_checkpointing(scheduler)
 
@@ -154,7 +181,7 @@ if __name__ == "__main__":
         accumulated_loss = 0
         accumulated_steps = 0
         
-
+        teacher_model.eval()
         model.train()
         for inputs in train_dataloader:
             
@@ -168,9 +195,24 @@ if __name__ == "__main__":
             # feed only kwargs with 'doc_' prefix
             doc_outputs = model(**{k[4:]: v.to(device = accelerator.device) for k, v in inputs.items() if k.startswith("doc")})
 
+            if config.get("teacher_model", False):
+                with torch.no_grad():
+                    teacher_query_outputs = teacher_model(
+                                                            input_ids=inputs["teacher_query_input_ids"].to(accelerator.device),
+                                                            attention_mask=inputs["teacher_query_attention_mask"].to(accelerator.device)
+                                                        )
+                    
+                    teacher_doc_outputs = teacher_model(**{k[12:]: v.to(accelerator.device) for k, v in inputs.items() if k.startswith("teacher_doc")})
+
             # accelerator.print("Forward Doc")
 
-            loss = loss_fn(query_outputs, doc_outputs, eval = True) / config.gradient_accumulation_steps
+            if config.get("teacher_model", False):
+                loss = loss_fn(query_outputs, doc_outputs, teacher_query_outputs, teacher_doc_outputs, eval = False)
+
+            else:
+                # For Eval and No Distill
+                loss = loss_fn(query_outputs, doc_outputs, eval = True)
+
 
             accumulated_loss += loss 
 

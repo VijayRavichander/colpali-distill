@@ -75,7 +75,7 @@ class ColModelDistillTrainingConfig:
             else:
                 print(f"Adapter already loaded from {self.pretrained_peft_model_name_or_path}. Not overwriting.")
 
-    print_gpu_utilization()
+    # print_gpu_utilization()
 
 
 class ColModelDistillTraining:

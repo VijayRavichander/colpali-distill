@@ -26,7 +26,7 @@ def main(config_path: Path) -> None:
 
     # Access the tokens
     hf_token = os.getenv("HF_TOKEN")
-    wandb_token = os.getenv("WANDB_TOKEN")
+    wandb_token = os.getenv("WANDB_API_KEY")
 
     os.environ["HF_TOKEN"] = hf_token
     os.environ["WANDB_API_KEY"] = wandb_token
@@ -49,7 +49,7 @@ def main(config_path: Path) -> None:
     )
 
     training_args = TrainingArguments(
-        output_dir = config.get("run_name") + "/checkpoints/",
+        output_dir = "./" + config.get("run_name") + "/checkpoints/",
         num_train_epochs = 1,
         gradient_accumulation_steps = config["gradient_accumulation_steps"],
         per_device_train_batch_size = config["per_device_train_batch_size"],
@@ -132,7 +132,7 @@ def main(config_path: Path) -> None:
 
     print("Creating Setup")
 
-    wandb.log(training_args)
+    # wandb.log(training_args)
 
     if isinstance(config, ColModelDistillTrainingConfig):
         app = ColModelDistillTraining(config)

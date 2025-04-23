@@ -93,7 +93,20 @@ class ColModelDistillTraining:
                                 self.config.train_dataset + "train-00003-of-00082.parquet", 
                                 self.config.train_dataset + "train-00004-of-00082.parquet", 
                                 self.config.train_dataset + "train-00005-of-00082.parquet", 
-                                self.config.train_dataset + "train-00006-of-00082.parquet"
+                                self.config.train_dataset + "train-00006-of-00082.parquet", 
+                                self.config.train_dataset + "train-00007-of-00082.parquet",
+                                self.config.train_dataset + "train-00008-of-00082.parquet", 
+                                self.config.train_dataset + "train-00009-of-00082.parquet", 
+                                self.config.train_dataset + "train-00010-of-00082.parquet", 
+                                self.config.train_dataset + "train-00011-of-00082.parquet", 
+                                self.config.train_dataset + "train-00012-of-00082.parquet", 
+                                self.config.train_dataset + "train-00013-of-00082.parquet", 
+                                self.config.train_dataset + "train-00014-of-00082.parquet", 
+                                self.config.train_dataset + "train-00015-of-00082.parquet", 
+                                self.config.train_dataset + "train-00016-of-00082.parquet", 
+                                self.config.train_dataset + "train-00017-of-00082.parquet", 
+                                self.config.train_dataset + "train-00018-of-00082.parquet", 
+                                self.config.train_dataset + "train-00019-of-00082.parquet"
                                 ], 
                                 
         "test": self.config.train_dataset + "test-00000-of-00001.parquet"}

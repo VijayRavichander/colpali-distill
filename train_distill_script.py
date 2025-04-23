@@ -70,7 +70,7 @@ def main() -> None:
         teacher_model = "vidore/colSmol-500M"
         # teacher_model = "vidore/colqwen2-v1.0-merged"
         student_model = "vidore/ColSmolVLM-Instruct-256M-base"
-        train_samples_size = 8000
+        train_samples_size = 20000
         eval_samples_size = 150
         training_args.run_name = "500M Distill using batch size of 32 and 1200 samples"
         loss_fn  = ColBertMarginMSELoss() # Renamed for clarity

@@ -181,7 +181,9 @@ if __name__ == "__main__":
         accumulated_loss = 0
         accumulated_steps = 0
         
-        teacher_model.eval()
+        if config.get("teacher_model", False):
+            teacher_model.eval()
+            
         model.train()
         for inputs in train_dataloader:
             

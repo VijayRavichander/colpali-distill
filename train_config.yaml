@@ -1,0 +1,17 @@
+teacher_model: "vidore/colSmol-500M" # "vidore/colqwen2-v1.0-merged" #Optional 
+student_model: "vidore/ColSmolVLM-Instruct-256M-base"
+wandb_dir: "colpali-distill"
+gradient_accumulation_steps: 8
+per_device_train_batch_size: 8
+bf16: true
+learning_rate: 1.0e-4
+optim: "paged_adamw_8bit"
+save_steps: 25
+eval_steps: 10
+distill: true
+train_samples_size: 20000
+eval_samples_size: 150
+loss_fn: "Pairwise"
+hub_repo_id: ""
+run_name: "a100-20K-run"
+# resume_from_checkpoint: #Optional 

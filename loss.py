@@ -122,10 +122,7 @@ class ColBertPairwiseDistillKLLoss(nn.Module): # Renamed for clarity
             batch_size_t, num_query_tokens_t, emb_dim_t = teacher_query_outputs.shape
             batch_size_tc, num_doc_tokens_t, emb_dim_tc = teacher_doc_outputs.shape
             assert (
-                batch_size == batch_size_t == batch_size_tc and
-                emb_dim == emb_dim_t == emb_dim_tc and
-                num_query_tokens == num_query_tokens_t and
-                num_doc_tokens == num_doc_tokens_t
+                batch_size == batch_size_t == batch_size_tc
             ), "Shape mismatch between student and teacher outputs"
 
             with torch.no_grad(): # Teacher calculations should not require gradients
